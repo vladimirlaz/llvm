@@ -1,0 +1,40 @@
+name: automatic merge sycl branch to openmp branch
+
+on:
+  schedule:
+  - cron: '*/10 * * * *'
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          # persist-credentials: false allows us to use our own credentials for
+          # pushing to the repository.  Otherwise, the default github actions token
+          # is used.
+          persist-credentials: false
+          fetch-depth: 0
+          path: src
+      - name: Sync
+        env:
+          SRCBRANCH: sycl
+          DSTBRANCH: openmp
+          SYNC_REPO: https://github.com/intel/llvm
+          LLVMBOT_TOKEN: ${{ secrets.LLVM_MAIN_SYNC_BBSYCL_TOKEN }}
+        run: |
+          git fetch origin
+          cd $GITHUB_WORKSPACE/src
+          base_commit=`git merge-base sycl openmp`
+          commit_in_branch=`git branch $DSTBRANCH --contains $base_commit | wc -l`
+          if [ $commit_in_branch -eq 0 ]; then
+              git cherry-pick $base_commit..$SRCBRANCH
+              if [ $? -ne 0 ]; then
+                  echo "failed to cherripick from from $SRCBRANCH to $DSTBRANCH, abort"
+                  exit 1
+              else
+                  git push https://$LLVMBOT_TOKEN@github.com/${{ github.repository }} ${DSTBRANCH}
+              fi
+          else
+              echo "no change, skip"
+          fi
+          echo "sync finished"
